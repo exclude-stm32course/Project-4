@@ -23,7 +23,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "usbd_cdc_if.h"
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -55,6 +56,47 @@ static void MX_GPIO_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#define BASE_ADDR 0x1000
+#define COUNTER_REQ BASE_ADDR + 0x1
+struct counter_req {
+	uint32_t header;
+};
+
+#define COUNTER_RSP BASE_ADDR + 0x2
+struct counter_rsp {
+	uint32_t header;
+	uint32_t value;
+};
+
+union usb_packets {
+	uint32_t header;
+	struct counter_req counter_req;
+	struct counter_rsp counter_rsp;
+};
+
+int msg = 0;
+union usb_packets usb_packet;
+int usb_len;
+
+
+/* just a counter */
+int counter = 0;
+static void usb_response(union usb_packets *packet, int len) {
+	union usb_packets rsp;
+	if(len != sizeof(*packet)) return; /* wrong size */
+
+	switch(packet->header) {
+	case COUNTER_REQ:
+		rsp.counter_rsp.header = COUNTER_RSP;
+		rsp.counter_rsp.value = ++counter;
+		break;
+
+	default:
+		return;
+	}
+	CDC_Transmit_FS((uint8_t*)&rsp, sizeof(rsp));
+
+}
 
 /* USER CODE END 0 */
 
@@ -88,7 +130,6 @@ int main(void)
   MX_GPIO_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
-//  USBD_CDC_TransmitPacket(pdev)
 
   /* USER CODE END 2 */
 
@@ -96,6 +137,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if(msg) {
+		  usb_response(&usb_packet, usb_len);
+		  msg = 0;
+//		  CDC_Transmit_FS(usb_buffer, usb_len);
+	  }
+//	  HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -163,7 +210,13 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void recv_usb(uint8_t* Buf, uint32_t *Len)
+{
+	msg = 1;
+	memcpy(&usb_packet, Buf, *Len);
+	usb_len = *Len;
 
+}
 /* USER CODE END 4 */
 
 /**
