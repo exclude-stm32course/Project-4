@@ -56,20 +56,26 @@ static void MX_GPIO_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+struct header {
+	uint32_t msgno;
+	uint32_t len;
+};
+
 #define BASE_ADDR 0x1000
 #define COUNTER_REQ BASE_ADDR + 0x1
 struct counter_req {
-	uint32_t header;
+	struct header header;
 };
 
 #define COUNTER_RSP BASE_ADDR + 0x2
 struct counter_rsp {
-	uint32_t header;
+	struct header header;
 	uint32_t value;
 };
 
 union usb_packets {
-	uint32_t header;
+	struct header header;
 	struct counter_req counter_req;
 	struct counter_rsp counter_rsp;
 };
@@ -83,18 +89,22 @@ int usb_len;
 int counter = 0;
 static void usb_response(union usb_packets *packet, int len) {
 	union usb_packets rsp;
-	if(len != sizeof(*packet)) return; /* wrong size */
+	int sz = 0;
 
-	switch(packet->header) {
+	if(len > sizeof(*packet)) return; /* wrong size */
+
+	switch(packet->header.msgno) {
 	case COUNTER_REQ:
-		rsp.counter_rsp.header = COUNTER_RSP;
+		rsp.counter_rsp.header.msgno = COUNTER_RSP;
 		rsp.counter_rsp.value = ++counter;
+		sz = sizeof(rsp.counter_rsp);
+		rsp.counter_req.header.len = sz;
 		break;
 
 	default:
 		return;
 	}
-	CDC_Transmit_FS((uint8_t*)&rsp, sizeof(rsp));
+	CDC_Transmit_FS((uint8_t*)&rsp, sz);
 
 }
 
@@ -210,8 +220,11 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void recv_usb(uint8_t* Buf, uint32_t *Len)
+void usb_recv(uint8_t* Buf, uint32_t *Len)
 {
+	/* if packet is too large */
+	if(sizeof(usb_packet) < *Len) return;
+
 	msg = 1;
 	memcpy(&usb_packet, Buf, *Len);
 	usb_len = *Len;
